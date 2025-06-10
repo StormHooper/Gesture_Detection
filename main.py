@@ -58,6 +58,16 @@ with mp_hands.Hands(
                     gesture = "Open Palm"
                 elif fingers == [False, True, False, False, False]:
                     gesture = "Pointing"
+                elif fingers == [False, True, True, False, False]:
+                    gesture = "Peace"
+                elif fingers == [False, False, True, False, False]:
+                    gesture = "Bird"
+                elif fingers == [True, False, False, False, True]:
+                    gesture = "Phone"
+                elif fingers == [True, False, False, False, False]:
+                    gesture = "Thumbs Up"
+                elif fingers == [False, False, False, False, True]:
+                    gesture = "Other Bird"
 
                 print(f"Gesture: {gesture}")
 
