@@ -6,10 +6,33 @@ cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
 # --- state ------------------------------------------------------------------
 active_read      = False        # wait‑for‑command mode
-cooldown_secs    = 2.0          # how long to wait after a fist
+cooldown_secs    = 4.0          # how long to wait after a fist
 last_event_time  = 0            # marks when the fist was detected
 last_printed     = None         # suppress duplicate prints
 # ---------------------------------------------------------------------------
+
+# --- Define Actions for Each Gesture ---
+def do_open_palm_action():
+    print("[Action] Turning lights ON (simulated).")
+    # For real hardware: send command to smart plug, MQTT, etc.
+
+def do_pointing_action():
+    print("[Action] You pointed — maybe select a menu item?")
+
+def do_peace_action():
+    print("[Action] Peace gesture — muting audio...")
+
+def do_bird_action():
+    print("[Action] Middle finger — rude! Logging it as a joke.")
+
+def do_phone_action():
+    print("[Action] Simulate answering a phone call.")
+
+def do_thumbs_up_action():
+    print("[Action] Thumbs up — confirming action!")
+
+def do_other_bird_action():
+    print("[Action] Pinky only — maybe do a wave animation.")
 
 with mp_hands.Hands(max_num_hands=1,
                     min_detection_confidence=0.7,
@@ -61,18 +84,26 @@ with mp_hands.Hands(max_num_hands=1,
                 if active_read:
                     if fingers == [True]*5:
                         gesture, active_read = "Open Palm", False
+                        do_open_palm_action()
                     elif fingers == [False, True, False, False, False]:
                         gesture, active_read = "Pointing",  False
+                        do_pointing_action()
                     elif fingers == [False, True, True, False, False]:
                         gesture, active_read = "Peace",    False
+                        do_peace_action()
                     elif fingers == [False, False, True, False, False]:
                         gesture, active_read = "Bird",     False
+                        do_bird_action()
                     elif fingers == [True, False, False, False, True]:
                         gesture, active_read = "Phone",    False
+                        do_phone_action()
                     elif fingers == [True, False, False, False, False]:
                         gesture, active_read = "Thumbs Up",False
+                        do_thumbs_up_action()
                     elif fingers == [False, False, False, False, True]:
                         gesture, active_read = "Other Bird",False
+                        do_other_bird_action()
+
                 # ----------------------------------------------------------------
 
         # console spam filter
