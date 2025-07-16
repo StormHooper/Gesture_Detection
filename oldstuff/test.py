@@ -4,30 +4,9 @@ from ctypes import cast, POINTER
 from comtypes import CLSCTX_ALL
 import screen_brightness_control as sbc
 
-from sklearn.neighbors import KNeighborsClassifier
-import numpy as np
-import joblib
-import numpy as np
-
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 mp_hands, mp_drawing = mp.solutions.hands, mp.solutions.drawing_utils
 cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-
-# Load ASL model
-from pathlib import Path
-
-model_path = Path("model/asl_knn_model.joblib")
-encoder_path = Path("model/label_encoder.joblib")
-
-if model_path.exists() and encoder_path.exists():
-    asl_model = joblib.load(model_path)
-    label_encoder = joblib.load(encoder_path)
-    print("[Model] ASL recognition model loaded.")
-else:
-    asl_model = None
-    label_encoder = None
-    print("[Warning] No ASL model found. ASL recognition will be disabled.")
-
 
 # --- state ------------------------------------------------------------------
 active_read      = False        # wait‑for‑command mode
@@ -36,9 +15,6 @@ last_event_time  = 0            # marks when the fist was detected
 last_printed     = None         # suppress duplicate prints
 command_cooldown_secs = 1.5  # cooldown *after* executing a command
 last_command_time = 0        # time last command was executed
-asl_active = False            # ASL detection mode
-last_asl_letter = None        # To prevent duplicate printing
-asl_start_time = 0  # Timestamp when ASL mode was activated
 # ---------------------------------------------------------------------------
 
 def brightness_up(step=10):
@@ -134,24 +110,6 @@ with mp_hands.Hands(max_num_hands=1,
                 mp_drawing.draw_landmarks(frame, lm_set, mp_hands.HAND_CONNECTIONS)
                 lm = lm_set.landmark
 
-                # --- ASL Recognition ---
-                if asl_model and asl_active and (now - asl_start_time > 1.0):  # 1 second delay
-                    asl_features = []
-                    for pt in lm_set.landmark:
-                        asl_features.extend([pt.x, pt.y, pt.z])
-
-                    prediction = asl_model.predict([asl_features])[0]
-                    predicted_sign = label_encoder.inverse_transform([prediction])[0]
-
-                    if predicted_sign != last_asl_letter:
-                        print(f"[ASL] Detected: {predicted_sign}")
-                        last_asl_letter = predicted_sign
-
-                    cv2.putText(frame, f"ASL: {predicted_sign}", (10, 70),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 0), 2)
-
-
-                    
                 # finger‑state bit‑list --------------------------------------
                 tips = [8, 12, 16, 20]            # idx, mid, ring, pinky
                 fingers = [(lm[p].y < lm[p-2].y) for p in tips]
@@ -175,7 +133,7 @@ with mp_hands.Hands(max_num_hands=1,
                     break
 
                 # ── commands (only if active_read and cool‑down done) ──────
-                if active_read and not asl_active:
+                if active_read:
                     if fingers == [True]*5:
                         gesture, active_read = "Open Palm", False
                         do_open_palm_action()
@@ -204,18 +162,11 @@ with mp_hands.Hands(max_num_hands=1,
                         gesture, active_read = "Other Bird",False
                         do_other_bird_action()
                         last_command_time = now
-                    elif fingers == [True, True, True, False, False]:
-                        gesture, active_read = "OK", False
-                        asl_active = True
-                        asl_start_time = now
+                    elif fingers == [False, False, False, True, True]:
+                        gesture, active = "OK", False
                         last_command_time = now
-                        print("[Mode] ASL detection activated.")
 
                 # ----------------------------------------------------------------
-        else:
-            if asl_active:
-                print("[Mode] ASL detection stopped — no hand detected.")
-            asl_active = False
 
         # console spam filter
         if gesture != "Unknown" and gesture != last_printed:
