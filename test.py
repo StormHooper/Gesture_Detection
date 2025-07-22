@@ -1,39 +1,30 @@
-import cv2, mediapipe as mp, os, time as t
-from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-from ctypes import cast, POINTER
-from comtypes import CLSCTX_ALL
+import cv2
+import mediapipe as mp
+import os
+import time as t
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 mp_hands, mp_drawing = mp.solutions.hands, mp.solutions.drawing_utils
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+cap = cv2.VideoCapture(0)  # No cv2.CAP_DSHOW on macOS
 
 # --- state ------------------------------------------------------------------
-active_read      = False        # wait‑for‑command mode
+active_read      = False        # wait-for-command mode
 cooldown_secs    = 3.0          # how long to wait after a fist
 last_event_time  = 0            # marks when the fist was detected
 last_printed     = None         # suppress duplicate prints
-command_cooldown_secs = 1.5  # cooldown *after* executing a command
-last_command_time = 0        # time last command was executed
+command_cooldown_secs = 1.5     # cooldown *after* executing a command
+last_command_time = 0           # time last command was executed
 # ---------------------------------------------------------------------------
 
-def get_volume_interface():
-    devices = AudioUtilities.GetSpeakers()
-    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-    return cast(interface, POINTER(IAudioEndpointVolume))
-
+# macOS placeholder functions for volume control
 def toggle_mute():
-    volume = get_volume_interface()
-    volume.SetMute(0 if volume.GetMute() else 1, None)
+    print("[Action] (macOS) Toggle mute - implement as needed")
 
 def volume_up(step=0.1):
-    volume = get_volume_interface()
-    current = volume.GetMasterVolumeLevelScalar()
-    volume.SetMasterVolumeLevelScalar(min(1.0, current + step), None)
+    print(f"[Action] (macOS) Volume up by {step} - implement as needed")
 
 def volume_down(step=0.1):
-    volume = get_volume_interface()
-    current = volume.GetMasterVolumeLevelScalar()
-    volume.SetMasterVolumeLevelScalar(max(0.0, current - step), None)
+    print(f"[Action] (macOS) Volume down by {step} - implement as needed")
 
 # --- Define Actions for Each Gesture ---
 def do_open_palm_action():
@@ -45,6 +36,7 @@ def do_pointing_action():
 
 def do_peace_action():
     print("[Action] Peace gesture — muting audio...")
+    toggle_mute()
 
 def do_bird_action():
     print("[Action] Middle finger — rude! Logging it as a joke.")
@@ -80,38 +72,36 @@ with mp_hands.Hands(max_num_hands=1,
         if now - last_command_time < command_cooldown_secs:
             continue
 
-
         if results.multi_hand_landmarks:
             for lm_set in results.multi_hand_landmarks:
                 mp_drawing.draw_landmarks(frame, lm_set, mp_hands.HAND_CONNECTIONS)
                 lm = lm_set.landmark
 
-                # finger‑state bit‑list --------------------------------------
+                # finger-state bit-list
                 tips = [8, 12, 16, 20]            # idx, mid, ring, pinky
                 fingers = [(lm[p].y < lm[p-2].y) for p in tips]
 
-                # thumb (mirror‑aware)
+                # thumb (mirror-aware)
                 thumb_up = lm[4].x > lm[3].x if lm[17].x < lm[0].x else lm[4].x < lm[3].x
                 fingers.insert(0, thumb_up)
-                # ------------------------------------------------------------
 
-                # ── activation ──────────────────────────────────────────────
+                # activation
                 if fingers == [False]*5 and not active_read:
                     gesture        = "Fist"
                     active_read    = True
-                    last_event_time = now            # start the cool‑down
+                    last_event_time = now            # start the cool-down
                     print("Fist detected – command mode will start in "
-                          f"{cooldown_secs:.0f} s…")
+                          f"{cooldown_secs:.0f} s…")
                     break                            # one gesture per loop
 
-                # refuse to read a command until cool‑down expires
+                # refuse to read a command until cool-down expires
                 if active_read and now - last_event_time < cooldown_secs:
                     break
 
-                # ── commands (only if active_read and cool‑down done) ──────
+                # commands (only if active_read and cool-down done)
                 if active_read:
                     if fingers == [True]*5:
-                        gesture, active_read = "Open Palm", False
+                        gesture, active_read = "Open Palm", False
                         do_open_palm_action()
                         last_command_time = now
                     elif fingers == [False, True, False, False, False]:
@@ -131,22 +121,20 @@ with mp_hands.Hands(max_num_hands=1,
                         do_phone_action()
                         last_command_time = now
                     elif fingers == [True, False, False, False, False]:
-                        gesture, active_read = "Thumbs Up",False
+                        gesture, active_read = "Thumbs Up",False
                         do_thumbs_up_action()
                         last_command_time = now
                     elif fingers == [False, False, False, False, True]:
-                        gesture, active_read = "Other Bird",False
+                        gesture, active_read = "Other Bird",False
                         do_other_bird_action()
                         last_command_time = now
-
-                # ----------------------------------------------------------------
 
         # console spam filter
         if gesture != "Unknown" and gesture != last_printed:
             print(f"Gesture: {gesture}")
             last_printed = gesture
 
-        cv2.imshow('Gesture Recognition', frame)
+        cv2.imshow('Gesture Recognition', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 

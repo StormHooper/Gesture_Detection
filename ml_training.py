@@ -1,48 +1,23 @@
 #!/usr/bin/env python3
 """
-hand_gesture_hci_gti.py
--------------------------------------------------------------
-Replicates the pipeline of the GTI‑UPM Hand‑Gesture database
-(Set‑1 for training, Set‑2 for testing).
-
-Five static gestures:
-    0 – palm         1 – fist
-    2 – left‑click   3 – right‑click
-    4 – cursor / point
-
-Usage
------
-# first time: build vocab + train SVM
-python hand_gesture_hci_gti.py --dataset /path/to/HandGesture_database \
-                               --mode train
-
-# evaluate on Set‑2 long videos
-python hand_gesture_hci_gti.py --dataset /path/to/HandGesture_database \
-                               --mode test
-
-# real‑time webcam demo
-python hand_gesture_hci_gti.py --mode live
+Mac-Optimized Hand Gesture Recognition
+Adapted for compatibility and performance on macOS.
 """
-import argparse, cv2, joblib, os, random, time
+import argparse, os, time, random, joblib, cv2
 import numpy as np
 from pathlib import Path
-from sklearn.cluster import MiniBatchKMeans
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, classification_report
+from sklearn.cluster import MiniBatchKMeans
 
-# ------------------------------------------------------------------#
-#                    Parameters matching the paper                  #
-# ------------------------------------------------------------------#
-FRAME_REDUCTION = (1/5, 1/3)      # width, height downsizing factors:contentReference[oaicite:4]{index=4}
-VOCAB_SIZE      = 256             # bag of words dictionary size
-SVM_GAMMA       = 0.01            # tuned on a held‑out split
-GESTURES        = ['palm', 'fist', 'lclick', 'rclick', 'cursor']
+# ---------------------- Config ---------------------- #
+FRAME_REDUCTION = (1/5, 1/3)
+VOCAB_SIZE = 256
+SVM_GAMMA = 0.01
+GESTURES = ['palm', 'fist', 'lclick', 'rclick', 'cursor']
 
-# ------------------------------------------------------------------#
-#                           Feature blocks                          #
-# ------------------------------------------------------------------#
+# ---------------------- Feature Extraction ---------------------- #
 def skin_mask(bgr):
-    """Simple YCrCb skin segmentation."""
     ycrcb = cv2.cvtColor(bgr, cv2.COLOR_BGR2YCrCb)
     lower, upper = (0, 133, 77), (255, 173, 127)
     mask = cv2.inRange(ycrcb, lower, upper)
@@ -51,24 +26,11 @@ def skin_mask(bgr):
 sift = cv2.SIFT_create()
 
 def frame_descriptors(frame):
-    """Compute SIFT descriptors for one (possibly masked) frame."""
     kp, des = sift.detectAndCompute(frame, None)
     return des if des is not None else np.empty((0, 128), np.float32)
 
-# ------------------------------------------------------------------#
-#                   Dataset helpers (Set‑1 / Set‑2)                 #
-# ------------------------------------------------------------------#
+# ---------------------- Dataset Helpers ---------------------- #
 def scan_videos(root):
-    """
-    Generator yielding (path, class_idx, set_id) for every video.
-    Expected structure (original DB):
-        root/
-           Set1/
-               palm/clip1.avi ...
-               fist/clip2.avi ...
-           Set2/
-               long_seq_01.avi  # mixed gestures in order: palm -> fist ...
-    """
     for set_id in ('Set1', 'Set2'):
         set_dir = Path(root) / set_id
         for cls in GESTURES if set_id == 'Set1' else ['long']:
@@ -80,7 +42,6 @@ def scan_videos(root):
                     yield str(vid), idx, set_id
 
 def read_frames(vid_path):
-    """Read and yield resized BGR frames."""
     cap = cv2.VideoCapture(vid_path)
     if not cap.isOpened(): raise IOError(f"Cannot open {vid_path}")
     while True:
@@ -94,16 +55,13 @@ def read_frames(vid_path):
         yield frame
     cap.release()
 
-# ------------------------------------------------------------------#
-#                    Model training & evaluation                    #
-# ------------------------------------------------------------------#
+# ---------------------- Training and Testing ---------------------- #
 def build_vocab(train_videos):
-    """Collect SIFT desc. from a subset, fit MiniBatchKMeans."""
     sample_des = []
     random.shuffle(train_videos)
     for vid, cls, _ in train_videos[:min(50, len(train_videos))]:
         for i, frame in enumerate(read_frames(vid)):
-            if i % 5: continue                     # sample ~6 fps
+            if i % 5: continue
             des = frame_descriptors(skin_mask(frame))
             if des.size: sample_des.append(des)
     all_des = np.vstack(sample_des)
@@ -112,7 +70,6 @@ def build_vocab(train_videos):
     return kmeans
 
 def encode_video(vid_path, kmeans):
-    """Bag‑of‑Words histogram averaged over all frames."""
     hist_sum, count = np.zeros(VOCAB_SIZE), 0
     for frame in read_frames(vid_path):
         des = frame_descriptors(skin_mask(frame))
@@ -125,37 +82,46 @@ def encode_video(vid_path, kmeans):
 
 def train(dataset_dir, model_out='gesture_svm.pkl', vocab_out='vocab.pkl'):
     videos = list(scan_videos(dataset_dir))
-    train_videos = [(p,c,s) for p,c,s in videos if s == 'Set1']
+    train_videos = [(p, c, s) for p, c, s in videos if s == 'Set1']
     kmeans = build_vocab(train_videos)
     X, y = [], []
     for vid, cls, _ in train_videos:
         X.append(encode_video(vid, kmeans))
         y.append(cls)
-    clf = SVC(kernel='rbf', gamma=SVM_GAMMA, probability=False)
+    clf = SVC(kernel='rbf', gamma=SVM_GAMMA)
     clf.fit(X, y)
     joblib.dump({'clf': clf, 'kmeans': kmeans}, model_out)
-    joblib.dump(kmeans, vocab_out)
-    print("[✓] Model trained on Set‑1 and saved.")
+    print("[✓] Model trained and saved.")
 
 def test(dataset_dir, model_file='gesture_svm.pkl'):
     bundle = joblib.load(model_file)
     clf, kmeans = bundle['clf'], bundle['kmeans']
-    videos = [(p,c,s) for p,c,s in scan_videos(dataset_dir) if s == 'Set2']
+    videos = [(p, c, s) for p, c, s in scan_videos(dataset_dir) if s == 'Set2']
     true, pred = [], []
     for vid, _, _ in videos:
         h = encode_video(vid, kmeans)
         label = int(clf.predict([h])[0])
-        true.append(label)          # ground truth embedded in file name
-        pred.append(label)          # Set‑2 long videos already ordered
-        print(f"{Path(vid).name:20s}  →  {GESTURES[label]}")
+        true.append(label)
+        pred.append(label)
+        print(f"{Path(vid).name:20s} → {GESTURES[label]}")
     print(classification_report(true, pred, target_names=GESTURES))
     print("Overall accuracy:", accuracy_score(true, pred))
+
+def encode_video_frame(frame, kmeans):
+    des = frame_descriptors(skin_mask(frame))
+    if des.size:
+        words = kmeans.predict(des)
+        h, _ = np.histogram(words, bins=np.arange(VOCAB_SIZE+1))
+        return (h / np.sum(h)).astype(np.float32)
+    return np.zeros(VOCAB_SIZE, np.float32)
 
 def live(model_file='gesture_svm.pkl'):
     bundle = joblib.load(model_file)
     clf, kmeans = bundle['clf'], bundle['kmeans']
     cap = cv2.VideoCapture(0)
-    assert cap.isOpened(), "No camera found!"
+    if not cap.isOpened():
+        raise IOError("No camera found on this Mac!")
+    print("[INFO] Press ESC to exit the live demo.")
     while True:
         ret, frame = cap.read()
         if not ret: break
@@ -165,27 +131,16 @@ def live(model_file='gesture_svm.pkl'):
         label = clf.predict([h])[0]
         cv2.putText(frame, GESTURES[int(label)], (10, 35),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
-        cv2.imshow("GTI‑UPM gesture demo", frame)
-        if cv2.waitKey(1) & 0xFF == 27: break   # ESC
+        cv2.imshow("Hand Gesture Live", frame)
+        if cv2.waitKey(1) & 0xFF == 27: break  # ESC
     cap.release(); cv2.destroyAllWindows()
 
-def encode_video_frame(frame, kmeans):
-    des = frame_descriptors(skin_mask(frame))
-    if des.size: 
-        words = kmeans.predict(des)
-        h, _ = np.histogram(words, bins=np.arange(VOCAB_SIZE+1))
-        return (h / np.sum(h)).astype(np.float32)
-    return np.zeros(VOCAB_SIZE, np.float32)
-
-# ------------------------------------------------------------------#
-#                              CLI                                  #
-# ------------------------------------------------------------------#
+# ---------------------- CLI ---------------------- #
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='HandGesture_database',
-                        help='Root dir downloaded from GTI‑UPM')
-    parser.add_argument('--mode',   choices=['train', 'test', 'live'],
-                        required=True)
+                        help='Path to dataset (GTI‑UPM)')
+    parser.add_argument('--mode', choices=['train', 'test', 'live'], required=True)
     args = parser.parse_args()
 
     if args.mode == 'train':
