@@ -9,7 +9,6 @@ import numpy as np
 import joblib
 import numpy as np
 
-
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 mp_hands, mp_drawing = mp.solutions.hands, mp.solutions.drawing_utils
 cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
@@ -39,6 +38,7 @@ command_cooldown_secs = 1.5  # cooldown *after* executing a command
 last_command_time = 0        # time last command was executed
 asl_active = False            # ASL detection mode
 last_asl_letter = None        # To prevent duplicate printing
+asl_start_time = 0  # Timestamp when ASL mode was activated
 # ---------------------------------------------------------------------------
 
 def brightness_up(step=10):
@@ -135,7 +135,7 @@ with mp_hands.Hands(max_num_hands=1,
                 lm = lm_set.landmark
 
                 # --- ASL Recognition ---
-                if asl_model and asl_active:
+                if asl_model and asl_active and (now - asl_start_time > 1.0):  # 1 second delay
                     asl_features = []
                     for pt in lm_set.landmark:
                         asl_features.extend([pt.x, pt.y, pt.z])
@@ -143,13 +143,13 @@ with mp_hands.Hands(max_num_hands=1,
                     prediction = asl_model.predict([asl_features])[0]
                     predicted_sign = label_encoder.inverse_transform([prediction])[0]
 
-                    # Only display when letter changes
                     if predicted_sign != last_asl_letter:
                         print(f"[ASL] Detected: {predicted_sign}")
                         last_asl_letter = predicted_sign
 
                     cv2.putText(frame, f"ASL: {predicted_sign}", (10, 70),
                                 cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 0), 2)
+
 
                     
                 # finger‑state bit‑list --------------------------------------
@@ -207,6 +207,7 @@ with mp_hands.Hands(max_num_hands=1,
                     elif fingers == [True, True, True, False, False]:
                         gesture, active_read = "OK", False
                         asl_active = True
+                        asl_start_time = now
                         last_command_time = now
                         print("[Mode] ASL detection activated.")
 
