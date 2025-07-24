@@ -7,7 +7,6 @@ import screen_brightness_control as sbc
 from sklearn.neighbors import KNeighborsClassifier
 import numpy as np
 import joblib
-import numpy as np
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 mp_hands, mp_drawing = mp.solutions.hands, mp.solutions.drawing_utils
