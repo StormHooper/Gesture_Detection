@@ -45,7 +45,7 @@ if pathlib.Path(json_path).exists():
 print("[Instructions]")
 print("Press a key (A–Z) to change label.")
 print("Press SPACE to save a sample.")
-print("Press 'q' to quit and save.\n")
+print("Press ';' to quit and save.\n")
 
 current_label = "A"
 
@@ -78,7 +78,7 @@ while cap.isOpened():
     if key == -1:
         continue
 
-    if key == ord('q'):
+    if key == ord(';'):
         break
     elif key == ord(' '):  # Save sample
         if landmark_list:

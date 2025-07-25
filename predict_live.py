@@ -19,7 +19,7 @@ with mp_hands.Hands(
     min_detection_confidence=0.7,
     min_tracking_confidence=0.7
 ) as hands:
-    print("Press 'q' to quit.")
+    print("Press ';' to quit.")
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -48,7 +48,7 @@ with mp_hands.Hands(
 
         cv2.imshow("ASL Live Prediction", frame)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(1) & 0xFF == ord(';'):
             break
 
 cap.release()
