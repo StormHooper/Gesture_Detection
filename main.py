@@ -3,7 +3,7 @@ from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 from ctypes import cast, POINTER
 from comtypes import CLSCTX_ALL
 import screen_brightness_control as sbc
-#
+
 from sklearn.neighbors import KNeighborsClassifier
 import numpy as np
 import joblib
@@ -227,4 +227,5 @@ with mp_hands.Hands(max_num_hands=1,
 
 cap.release()
 cv2.destroyAllWindows()
+
 
