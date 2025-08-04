@@ -11,6 +11,17 @@ import os
 with open("dataset/asl_data.json", "r") as f:
     data = json.load(f)
 
+from collections import Counter
+
+print("[🔍] Sample count:", len(data))
+labels = [sample["label"] for sample in data]
+print("[🔍] Unique labels:", sorted(set(labels)))
+print("[🔍] Label distribution:", Counter(labels))
+print("[🔍] Count of 'N':", labels.count("N"))
+print("[🔍] First 5 labels:", labels[:5])
+print("[🔍] Last 5 labels:", labels[-5:])
+
+
 X = []
 y = []
 
@@ -43,3 +54,13 @@ joblib.dump(model, "model/asl_knn_model.joblib")
 joblib.dump(encoder, "model/label_encoder.joblib")
 
 print("[✅] Model and label encoder saved to 'model/' folder.")
+
+print("Sample count:", len(data))
+labels = [sample["label"] for sample in data]
+print("Unique labels in JSON:", sorted(set(labels)))
+
+from collections import Counter
+print("Label distribution:", Counter(labels))
+
+
+print("Labels after encoding:", encoder.classes_)
