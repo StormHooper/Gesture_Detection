@@ -1,0 +1,111 @@
+<html>
+    <head>
+        <title>Mac Sign Language Model Instructions</title>
+        <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f9f9f9;
+            color: #333;
+            padding: 40px;
+            line-height: 1.6;
+        }
+
+        h1 {
+            background: #007acc;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+            font-size: 24px;
+        }
+
+        ol, ul {
+            padding-left: 20px;
+            margin-bottom: 30px;
+        }
+
+        li {
+            margin: 8px 0;
+        }
+
+        i {
+            color: #444;
+            background-color: #eaeaea;
+            padding: 2px 5px;
+            border-radius: 4px;
+        }
+
+        b {
+            color: #000;
+        }
+
+        ul li {
+            list-style-type: square;
+            margin-left: 20px;
+        }
+
+        a {
+            color: #007acc;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+    </head>
+
+
+
+    <body>
+        <h1><b>Testing the Hand Detector</b></h1>
+        <ol>
+            <li>Run "<i>test.py</i>" to test that the model works</li>
+            <li>Hold different fingers and amounts of fingers</li>
+            <li>Check if the console recorded:
+            <ul>
+                <li>Correct fingers held up</li>
+                <li>Correct number of fingers</li>
+                <li>An angle that is getting announced every second</li>
+            </ul>
+            </li>
+            <li>Move on to <b>Data Collecting</b></li>
+        </ol>
+        <p></p>
+        
+        <h1><b>Data Collecting</b></h1>
+        <ol>
+        <li>Skip to <b>Training the Data</b> IF you are using the data already provided without additional</li>
+            <li>Look up a picture of the sign language that you are using</li>
+            <li>Run the "<i>collect_asl_data.py</i>"</li>
+            <li>Hit the letter key that follows with the letter that data is being recorded for</li>
+            <li>Hit the space bar to record about 50 samples for</li>
+            <ul>
+                <li>EACH letter</li>
+                <li>EACH hand</li>
+            </ul>
+            <li>Move on to <b>Training the Data</b></li>
+        </ol>
+        <h1><b>Training the Data</b></h1>
+        <ol>
+            <li>Check the file type of the data, if it is not "<i>.json</i>", go back to the <b>Data Collecting</b></li>
+            <li>Make sure the data is named "<i>asl_data.json</i>" or the program will error</li>
+            <li>Run "<i>train_asl_model.py</i>"</li>
+            <li>If the graph shown has a lot of "1.00", then DELETE "<i>mac_data.json</i>" and redo <b>Data Collecting</b></li>
+            <li>Check that 2 new files were created:
+            <ul>
+                <li>"<i>asl_knn_model.jotlib</i>"</li>
+                <li>"<i>label_encoder.jotlib</i>"</li>
+            </ul>
+            <li>Move on to <b>Testing the Model</b></li>
+        </ol>
+        <h1><b>Testing the Model</b></h1>
+        <ol>
+            <li>Run "<i>main.py</i>"</li>
+            <li>Test the different hand gestures</li>
+            <li>Check that the console can correctly identify the gestures</li>
+            <li>Activate the ASL detection mode</li>
+            <li>Check that the console can correctly identify the ASL letters</li>
+            <li>Feel free to suggest other gestures</li>
+    </body>
+</html>
