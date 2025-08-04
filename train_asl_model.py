@@ -1,45 +1,54 @@
 import json
+import os
 import numpy as np
-from sklearn.model_selection import train_test_split
+from pathlib import Path
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 import joblib
-import os
 
-# Load JSON data
-with open("dataset/asl_data.json", "r") as f:
+# --------------------- Paths --------------------- #
+dataset_path = Path("dataset/asl_data.json")
+model_dir = Path("model")
+model_dir.mkdir(exist_ok=True)
+model_file = model_dir / "asl_knn_model.joblib"
+encoder_file = model_dir / "label_encoder.joblib"
+
+# ------------------- Load JSON ------------------- #
+if not dataset_path.exists():
+    raise FileNotFoundError(f"[❌] Dataset not found at {dataset_path}")
+
+with open(dataset_path, "r") as f:
     data = json.load(f)
 
-X = []
-y = []
-
-for sample in data:
-    X.append(sample["landmarks"])
-    y.append(sample["label"])
+X = [sample["landmarks"] for sample in data]
+y = [sample["label"] for sample in data]
 
 X = np.array(X)
 y = np.array(y)
 
-# Encode labels (e.g., "A" → 0, "B" → 1, etc.)
+# ----------------- Encode Labels ----------------- #
 encoder = LabelEncoder()
 y_encoded = encoder.fit_transform(y)
 
-# Train/test split
+# ------------------- Split Data ------------------ #
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y_encoded, test_size=0.2, random_state=42)
+    X, y_encoded, test_size=0.2, random_state=42
+)
 
-# Train KNN model
+# ---------------- Train Classifier --------------- #
 model = KNeighborsClassifier(n_neighbors=3)
 model.fit(X_train, y_train)
 
-# Evaluate
+# ------------------- Evaluate -------------------- #
 y_pred = model.predict(X_test)
+print("\n[Model Evaluation]")
 print(classification_report(y_test, y_pred, target_names=encoder.classes_))
 
-# Save model and label encoder
-os.makedirs("model", exist_ok=True)
-joblib.dump(model, "model/asl_knn_model.joblib")
-joblib.dump(encoder, "model/label_encoder.joblib")
+# ------------------- Save Model ------------------ #
+joblib.dump(model, model_file)
+joblib.dump(encoder, encoder_file)
 
-print("[✅] Model and label encoder saved to 'model/' folder.")
+print(f"\n[✅] Model saved to:     {model_file}")
+print(f"[✅] Label encoder saved: {encoder_file}")
