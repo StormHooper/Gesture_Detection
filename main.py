@@ -1,206 +1,232 @@
-import cv2
-import mediapipe as mp
-import os
-import time as t
-import subprocess
+import cv2, mediapipe as mp, os, time as t
+import numpy as np
 import joblib
 from pathlib import Path
-import numpy as np
+from sklearn.neighbors import KNeighborsClassifier
+import platform
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# Check OS
+IS_WINDOWS = platform.system() == "Windows"
 
-cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
+# Windows-only imports
+if IS_WINDOWS:
+    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+    from ctypes import cast, POINTER
+    from comtypes import CLSCTX_ALL
+    import screen_brightness_control as sbc
+else:
+    print("[Info] Non-Windows OS detected — audio/brightness control disabled.")
 
-# --- macOS Audio Control via osascript ---
-def volume_up(step=10):
-    subprocess.run(["osascript", "-e", f"set volume output volume (output volume of (get volume settings) + {step})"])
-    print(f"[Action] Volume increased by {step}.")
+# Initialize camera
+cap = cv2.VideoCapture(0, cv2.CAP_DSHOW if IS_WINDOWS else 0)
 
-def volume_down(step=10):
-    subprocess.run(["osascript", "-e", f"set volume output volume (output volume of (get volume settings) - {step})"])
-    print(f"[Action] Volume decreased by {step}.")
+# Mediapipe setup
+mp_hands = mp.solutions.hands
+mp_drawing = mp.solutions.drawing_utils
 
-def toggle_mute():
-    subprocess.run(["osascript", "-e", "set volume output muted not (output muted of (get volume settings))"])
-    print(f"[Action] Audio mute toggled.")
-
-# --- Brightness placeholders for macOS ---
-def brightness_up(step=10):
-    print(f"[Action] Brightness would increase by {step}% (macOS implementation skipped).")
-
-def brightness_down(step=10):
-    print(f"[Action] Brightness would decrease by {step}% (macOS implementation skipped).")
-
-# --- ASL Model Load ---
-model_path = Path("model/face_knn_model.joblib")
+# Load ASL model if available
+model_path = Path("model/asl_knn_model.joblib")
 encoder_path = Path("model/label_encoder.joblib")
-
 if model_path.exists() and encoder_path.exists():
-    knn_model = joblib.load(model_path)
+    asl_model = joblib.load(model_path)
     label_encoder = joblib.load(encoder_path)
     print("[Model] ASL recognition model loaded.")
 else:
-    knn_model = None
+    asl_model = None
     label_encoder = None
     print("[Warning] No ASL model found. ASL recognition will be disabled.")
 
-# Mediapipe Hands Setup
-mp_hands = mp.solutions.hands
-mp_drawing = mp.solutions.drawing_utils
-hands_detector = mp_hands.Hands(static_image_mode=False, max_num_hands=1,
-                                 min_detection_confidence=0.7, min_tracking_confidence=0.7)
-
-# --- State ---
+# State
 active_read = False
 cooldown_secs = 3.0
 last_event_time = 0
-last_command_time = 0
+last_printed = None
 command_cooldown_secs = 1.5
+last_command_time = 0
 asl_active = False
 last_asl_letter = None
-last_printed = None
+asl_start_time = 0
 
 # --- Actions ---
+def brightness_up(step=10):
+    if IS_WINDOWS:
+        try:
+            current = sbc.get_brightness(display=0)[0]
+            sbc.set_brightness(min(100, current + step), display=0)
+            print(f"[Action] Brightness increased to {min(100, current + step)}%")
+        except Exception as e:
+            print(f"[Error] Brightness control failed: {e}")
+    else:
+        print("[Info] Brightness up not supported on macOS.")
+
+def brightness_down(step=10):
+    if IS_WINDOWS:
+        try:
+            current = sbc.get_brightness(display=0)[0]
+            sbc.set_brightness(max(0, current - step), display=0)
+            print(f"[Action] Brightness decreased to {max(0, current - step)}%")
+        except Exception as e:
+            print(f"[Error] Brightness control failed: {e}")
+    else:
+        print("[Info] Brightness down not supported on macOS.")
+
+def get_volume_interface():
+    if IS_WINDOWS:
+        devices = AudioUtilities.GetSpeakers()
+        interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+        return cast(interface, POINTER(IAudioEndpointVolume))
+    return None
+
+def toggle_mute():
+    if IS_WINDOWS:
+        volume = get_volume_interface()
+        volume.SetMute(0 if volume.GetMute() else 1, None)
+    else:
+        print("[Info] Mute toggle not supported on macOS.")
+
+def volume_up(step=0.1):
+    if IS_WINDOWS:
+        volume = get_volume_interface()
+        current = volume.GetMasterVolumeLevelScalar()
+        volume.SetMasterVolumeLevelScalar(min(1.0, current + step), None)
+    else:
+        print("[Info] Volume up not supported on macOS.")
+
+def volume_down(step=0.1):
+    if IS_WINDOWS:
+        volume = get_volume_interface()
+        current = volume.GetMasterVolumeLevelScalar()
+        volume.SetMasterVolumeLevelScalar(max(0.0, current - step), None)
+    else:
+        print("[Info] Volume down not supported on macOS.")
+
+# Gesture Actions
 def do_open_palm_action():
-    print("[Action] Simulated: Turning lights ON.")
+    print("[Action] Turning lights ON (simulated).")
 
 def do_pointing_action():
-    print("[Action] Increasing volume.")
+    print("[Action] You pointed — increasing volume by 10.")
     volume_up()
 
 def do_peace_action():
-    print("[Action] Toggling mute.")
+    print("[Action] Peace gesture — muting audio...")
     toggle_mute()
 
 def do_bird_action():
-    print("[Action] Middle finger detected. No action.")
+    print("[Action] Middle finger — rude! Logging it as a joke.")
 
 def do_phone_action():
-    print("[Action] Lowering brightness.")
+    print("[Action] Phone - lowering the brightness by 10.")
     brightness_down()
 
 def do_thumbs_up_action():
-    print("[Action] Increasing brightness.")
+    print("[Action] Thumbs up — upping the brightness by 10.")
     brightness_up()
 
 def do_other_bird_action():
-    print("[Action] Lowering volume.")
+    print("[Action] Pinky - Lowering volume by 10.")
     volume_down()
 
-# --- Feature Extraction ---
-def extract_hand_features(image):
-    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    results = hands_detector.process(image_rgb)
-    if not results.multi_hand_landmarks:
-        return None
-    hand = results.multi_hand_landmarks[0]
-    return np.array([[lm.x, lm.y, lm.z] for lm in hand.landmark]).flatten().reshape(1, -1)
+# Main loop
+with mp_hands.Hands(max_num_hands=1,
+                    min_detection_confidence=0.7,
+                    min_tracking_confidence=0.7) as hands:
 
-# --- Sign Recognition ---
-def recognize_sign(frame):
-    if not knn_model or not label_encoder:
-        return "Model not loaded"
-    features = extract_hand_features(frame)
-    if features is None:
-        return "No hand"
-    prediction = knn_model.predict(features)
-    label = label_encoder.inverse_transform(prediction)[0]
-    return label
+    print("Press 'q' to quit.")
 
-# --- Main Loop ---
-print("Press 'q' to quit.")
+    while cap.isOpened():
+        ok, frame = cap.read()
+        if not ok:
+            print("Ignoring empty camera frame.")
+            continue
 
-while cap.isOpened():
-    ok, frame = cap.read()
-    if not ok:
-        print("Ignoring empty camera frame.")
-        continue
+        frame = cv2.flip(frame, 1)
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = hands.process(rgb)
 
-    frame = cv2.flip(frame, 1)
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = hands_detector.process(rgb)
-
-    gesture = "Unknown"
-    now = t.time()
-
-    if results.multi_hand_landmarks:
+        gesture = "Unknown"
+        now = t.time()
         if now - last_command_time < command_cooldown_secs:
             continue
 
-        for lm_set in results.multi_hand_landmarks:
-            mp_drawing.draw_landmarks(frame, lm_set, mp_hands.HAND_CONNECTIONS)
-            lm = lm_set.landmark
+        if results.multi_hand_landmarks:
+            for lm_set in results.multi_hand_landmarks:
+                mp_drawing.draw_landmarks(frame, lm_set, mp_hands.HAND_CONNECTIONS)
+                lm = lm_set.landmark
 
-            # --- Finger States ---
-            tips = [8, 12, 16, 20]
-            fingers = [(lm[p].y < lm[p-2].y) for p in tips]
-            thumb_up = lm[4].x > lm[3].x if lm[17].x < lm[0].x else lm[4].x < lm[3].x
-            fingers.insert(0, thumb_up)
+                if asl_model and asl_active and (now - asl_start_time > 1.0):
+                    asl_features = [v for pt in lm_set.landmark for v in (pt.x, pt.y, pt.z)]
+                    prediction = asl_model.predict([asl_features])[0]
+                    predicted_sign = label_encoder.inverse_transform([prediction])[0]
+                    if predicted_sign != last_asl_letter:
+                        print(f"[ASL] Detected: {predicted_sign}")
+                        last_asl_letter = predicted_sign
+                    cv2.putText(frame, f"ASL: {predicted_sign}", (10, 70),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 0), 2)
 
-            # --- Activation ---
-            if fingers == [False]*5 and not active_read:
-                gesture = "Fist"
-                active_read = True
-                last_event_time = now
-                print("Fist detected — command mode will start in "
-                      f"{cooldown_secs:.0f}s…")
-                break
+                tips = [8, 12, 16, 20]
+                fingers = [(lm[p].y < lm[p - 2].y) for p in tips]
+                thumb_up = lm[4].x > lm[3].x if lm[17].x < lm[0].x else lm[4].x < lm[3].x
+                fingers.insert(0, thumb_up)
 
-            if active_read and now - last_event_time < cooldown_secs:
-                break
+                if fingers == [False]*5 and not active_read:
+                    gesture = "Fist"
+                    active_read = True
+                    last_event_time = now
+                    print("Fist detected – command mode will start in "
+                          f"{cooldown_secs:.0f} s…")
+                    break
 
-            # --- Commands ---
-            if active_read and not asl_active:
-                if fingers == [True]*5:
-                    gesture, active_read = "Open Palm", False
-                    do_open_palm_action()
-                elif fingers == [False, True, False, False, False]:
-                    gesture, active_read = "Pointing", False
-                    do_pointing_action()
-                elif fingers == [False, True, True, False, False]:
-                    gesture, active_read = "Peace", False
-                    do_peace_action()
-                elif fingers == [False, False, True, False, False]:
-                    gesture, active_read = "Bird", False
-                    do_bird_action()
-                elif fingers == [True, False, False, False, True]:
-                    gesture, active_read = "Phone", False
-                    do_phone_action()
-                elif fingers == [True, False, False, False, False]:
-                    gesture, active_read = "Thumbs Up", False
-                    do_thumbs_up_action()
-                elif fingers == [False, False, False, False, True]:
-                    gesture, active_read = "Other Bird", False
-                    do_other_bird_action()
-                elif fingers == [True, True, True, False, False]:
-                    gesture, active_read = "OK", False
-                    asl_active = True
-                    print("[Mode] ASL detection activated.")
+                if active_read and now - last_event_time < cooldown_secs:
+                    break
 
-                last_command_time = now
+                if active_read and not asl_active:
+                    if fingers == [True]*5:
+                        gesture, active_read = "Open Palm", False
+                        do_open_palm_action()
+                        last_command_time = now
+                    elif fingers == [False, True, False, False, False]:
+                        gesture, active_read = "Pointing", False
+                        do_pointing_action()
+                        last_command_time = now
+                    elif fingers == [False, True, True, False, False]:
+                        gesture, active_read = "Peace", False
+                        do_peace_action()
+                        last_command_time = now
+                    elif fingers == [False, False, True, False, False]:
+                        gesture, active_read = "Bird", False
+                        do_bird_action()
+                        last_command_time = now
+                    elif fingers == [True, False, False, False, True]:
+                        gesture, active_read = "Phone", False
+                        do_phone_action()
+                        last_command_time = now
+                    elif fingers == [True, False, False, False, False]:
+                        gesture, active_read = "Thumbs Up", False
+                        do_thumbs_up_action()
+                        last_command_time = now
+                    elif fingers == [False, False, False, False, True]:
+                        gesture, active_read = "Other Bird", False
+                        do_other_bird_action()
+                        last_command_time = now
+                    elif fingers == [True, True, True, False, False]:
+                        gesture, active_read = "OK", False
+                        asl_active = True
+                        asl_start_time = now
+                        last_command_time = now
+                        print("[Mode] ASL detection activated.")
+        else:
+            if asl_active:
+                print("[Mode] ASL detection stopped — no hand detected.")
+            asl_active = False
 
-            # --- ASL Recognition Mode ---
-            elif asl_active:
-                prediction_label = recognize_sign(frame)
-                if prediction_label != last_asl_letter and prediction_label not in ("No hand", "Model not loaded"):
-                    print(f"[ASL] Detected: {prediction_label}")
-                    last_asl_letter = prediction_label
+        if gesture != "Unknown" and gesture != last_printed:
+            print(f"Gesture: {gesture}")
+            last_printed = gesture
 
-                cv2.putText(frame, f"ASL: {prediction_label}", (10, 70),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 2)
-
-    else:
-        if asl_active:
-            print("[Mode] ASL detection stopped — no hand detected.")
-        asl_active = False
-
-    if gesture != "Unknown" and gesture != last_printed:
-        print(f"Gesture: {gesture}")
-        last_printed = gesture
-
-    cv2.imshow('Gesture Recognition (macOS)', frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        cv2.imshow('Gesture Recognition', frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
 cap.release()
 cv2.destroyAllWindows()
