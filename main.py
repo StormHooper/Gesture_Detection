@@ -1,3 +1,10 @@
+""" Use this to create the virtual environment (only required the first time) """
+# python3 -m venv myenv 
+
+""" Use this to activate the virtual environment (required every single time) """
+# source myenv/bin/activate
+
+# Imports the modules
 import cv2, mediapipe as mp, os, time as t
 import numpy as np
 import joblib
@@ -230,5 +237,6 @@ with mp_hands.Hands(max_num_hands=1,
 
 cap.release()
 cv2.destroyAllWindows()
+
 
 
