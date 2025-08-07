@@ -114,7 +114,8 @@ with mp_hands.Hands(max_num_hands=1,
 
         frame = cv2.flip(frame, 1)
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = hands.process(rgb)
+        from typing import Any
+        results: Any = hands.process(rgb)
 
         gesture = "Unknown"
         now = t.time()
