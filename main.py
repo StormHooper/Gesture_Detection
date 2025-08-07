@@ -1,3 +1,4 @@
+# Imports the modules
 import cv2, mediapipe as mp, os, time as t
 import numpy as np
 import joblib
@@ -7,6 +8,7 @@ import platform
 
 # Check OS
 IS_WINDOWS = platform.system() == "Windows"
+IS_LINUX = platform.system() == "Linux"
 
 # Windows-only imports
 if IS_WINDOWS:
@@ -18,7 +20,8 @@ else:
     print("[Info] Non-Windows OS detected — audio/brightness control disabled.")
 
 # Initialize camera
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW if IS_WINDOWS else 0)
+# On Pi, remove cv2.CAP_DSHOW
+cap = cv2.VideoCapture(0)
 
 # Mediapipe setup
 mp_hands = mp.solutions.hands
@@ -57,7 +60,7 @@ def brightness_up(step=10):
         except Exception as e:
             print(f"[Error] Brightness control failed: {e}")
     else:
-        print("[Info] Brightness up not supported on macOS.")
+        print("[Info] Brightness up not supported on Linux.")
 
 def brightness_down(step=10):
     if IS_WINDOWS:
@@ -68,7 +71,7 @@ def brightness_down(step=10):
         except Exception as e:
             print(f"[Error] Brightness control failed: {e}")
     else:
-        print("[Info] Brightness down not supported on macOS.")
+        print("[Info] Brightness down not supported on Linux.")
 
 def get_volume_interface():
     if IS_WINDOWS:
@@ -82,7 +85,7 @@ def toggle_mute():
         volume = get_volume_interface()
         volume.SetMute(0 if volume.GetMute() else 1, None)
     else:
-        print("[Info] Mute toggle not supported on macOS.")
+        print("[Info] Mute toggle not supported on Linux.")
 
 def volume_up(step=0.1):
     if IS_WINDOWS:
@@ -90,7 +93,7 @@ def volume_up(step=0.1):
         current = volume.GetMasterVolumeLevelScalar()
         volume.SetMasterVolumeLevelScalar(min(1.0, current + step), None)
     else:
-        print("[Info] Volume up not supported on macOS.")
+        print("[Info] Volume up not supported on Linux.")
 
 def volume_down(step=0.1):
     if IS_WINDOWS:
@@ -98,7 +101,7 @@ def volume_down(step=0.1):
         current = volume.GetMasterVolumeLevelScalar()
         volume.SetMasterVolumeLevelScalar(max(0.0, current - step), None)
     else:
-        print("[Info] Volume down not supported on macOS.")
+        print("[Info] Volume down not supported on Linux.")
 
 # Gesture Actions
 def do_open_palm_action():
@@ -210,23 +213,4 @@ with mp_hands.Hands(max_num_hands=1,
                         do_other_bird_action()
                         last_command_time = now
                     elif fingers == [True, True, True, False, False]:
-                        gesture, active_read = "OK", False
-                        asl_active = True
-                        asl_start_time = now
-                        last_command_time = now
-                        print("[Mode] ASL detection activated.")
-        else:
-            if asl_active:
-                print("[Mode] ASL detection stopped — no hand detected.")
-            asl_active = False
-
-        if gesture != "Unknown" and gesture != last_printed:
-            print(f"Gesture: {gesture}")
-            last_printed = gesture
-
-        cv2.imshow('Gesture Recognition', frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-cap.release()
-cv2.destroyAllWindows()
+                        gesture, activ
