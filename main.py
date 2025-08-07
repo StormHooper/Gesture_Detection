@@ -1,7 +1,6 @@
 # Raspberry Pi system check
 import platform
 from pathlib import Path
-import sys
 
 if platform.system() != "Linux":
     raise EnvironmentError("This script must be run on a Linux-based Raspberry Pi device.")
@@ -14,9 +13,7 @@ print("[System] Raspberry Pi detected. Continuing...")
 
 # Imports
 import cv2, mediapipe as mp, os, time as t
-import numpy as np
 import joblib
-from sklearn.neighbors import KNeighborsClassifier
 
 # Initialize camera
 cap = cv2.VideoCapture(0)
