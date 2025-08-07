@@ -1,26 +1,24 @@
-# Imports the modules
+# Raspberry Pi system check
+import platform
+from pathlib import Path
+import sys
+
+if platform.system() != "Linux":
+    raise EnvironmentError("This script must be run on a Linux-based Raspberry Pi device.")
+
+model_path = Path("/proc/device-tree/model")
+if not model_path.exists() or "Raspberry Pi" not in model_path.read_text():
+    raise EnvironmentError("This script is intended for Raspberry Pi hardware only.")
+
+print("[System] Raspberry Pi detected. Continuing...")
+
+# Imports
 import cv2, mediapipe as mp, os, time as t
 import numpy as np
 import joblib
-from pathlib import Path
 from sklearn.neighbors import KNeighborsClassifier
-import platform
-
-# Check OS
-IS_WINDOWS = platform.system() == "Windows"
-IS_LINUX = platform.system() == "Linux"
-
-# Windows-only imports
-if IS_WINDOWS:
-    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-    from ctypes import cast, POINTER
-    from comtypes import CLSCTX_ALL
-    import screen_brightness_control as sbc
-else:
-    print("[Info] Non-Windows OS detected — audio/brightness control disabled.")
 
 # Initialize camera
-# On Pi, remove cv2.CAP_DSHOW
 cap = cv2.VideoCapture(0)
 
 # Mediapipe setup
@@ -50,58 +48,32 @@ asl_active = False
 last_asl_letter = None
 asl_start_time = 0
 
-# --- Actions ---
+# --- Actions for Raspberry Pi ---
 def brightness_up(step=10):
-    if IS_WINDOWS:
-        try:
-            current = sbc.get_brightness(display=0)[0]
-            sbc.set_brightness(min(100, current + step), display=0)
-            print(f"[Action] Brightness increased to {min(100, current + step)}%")
-        except Exception as e:
-            print(f"[Error] Brightness control failed: {e}")
-    else:
-        print("[Info] Brightness up not supported on Linux.")
+    try:
+        os.system(f"xrandr --output $(xrandr | grep ' connected' | cut -f1 -d ' ') --brightness 1")
+        print(f"[Action] Brightness increased (simulated via xrandr)")
+    except Exception as e:
+        print(f"[Error] Brightness control failed: {e}")
 
 def brightness_down(step=10):
-    if IS_WINDOWS:
-        try:
-            current = sbc.get_brightness(display=0)[0]
-            sbc.set_brightness(max(0, current - step), display=0)
-            print(f"[Action] Brightness decreased to {max(0, current - step)}%")
-        except Exception as e:
-            print(f"[Error] Brightness control failed: {e}")
-    else:
-        print("[Info] Brightness down not supported on Linux.")
-
-def get_volume_interface():
-    if IS_WINDOWS:
-        devices = AudioUtilities.GetSpeakers()
-        interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-        return cast(interface, POINTER(IAudioEndpointVolume))
-    return None
+    try:
+        os.system(f"xrandr --output $(xrandr | grep ' connected' | cut -f1 -d ' ') --brightness 0.5")
+        print(f"[Action] Brightness decreased (simulated via xrandr)")
+    except Exception as e:
+        print(f"[Error] Brightness control failed: {e}")
 
 def toggle_mute():
-    if IS_WINDOWS:
-        volume = get_volume_interface()
-        volume.SetMute(0 if volume.GetMute() else 1, None)
-    else:
-        print("[Info] Mute toggle not supported on Linux.")
+    os.system("amixer set Master toggle")
+    print("[Action] Toggled mute")
 
-def volume_up(step=0.1):
-    if IS_WINDOWS:
-        volume = get_volume_interface()
-        current = volume.GetMasterVolumeLevelScalar()
-        volume.SetMasterVolumeLevelScalar(min(1.0, current + step), None)
-    else:
-        print("[Info] Volume up not supported on Linux.")
+def volume_up(step=10):
+    os.system(f"amixer set Master {step}%+")
+    print(f"[Action] Volume increased by {step}%")
 
-def volume_down(step=0.1):
-    if IS_WINDOWS:
-        volume = get_volume_interface()
-        current = volume.GetMasterVolumeLevelScalar()
-        volume.SetMasterVolumeLevelScalar(max(0.0, current - step), None)
-    else:
-        print("[Info] Volume down not supported on Linux.")
+def volume_down(step=10):
+    os.system(f"amixer set Master {step}%-")
+    print(f"[Action] Volume decreased by {step}%")
 
 # Gesture Actions
 def do_open_palm_action():
@@ -213,4 +185,23 @@ with mp_hands.Hands(max_num_hands=1,
                         do_other_bird_action()
                         last_command_time = now
                     elif fingers == [True, True, True, False, False]:
-                        gesture, activ
+                        gesture, active_read = "OK", False
+                        asl_active = True
+                        asl_start_time = now
+                        last_command_time = now
+                        print("[Mode] ASL detection activated.")
+        else:
+            if asl_active:
+                print("[Mode] ASL detection stopped — no hand detected.")
+            asl_active = False
+
+        if gesture != "Unknown" and gesture != last_printed:
+            print(f"Gesture: {gesture}")
+            last_printed = gesture
+
+        cv2.imshow('Gesture Recognition', frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+cap.release()
+cv2.destroyAllWindows()
