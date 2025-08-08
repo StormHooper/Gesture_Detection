@@ -1,4 +1,3 @@
-# Imports the modules
 import cv2, mediapipe as mp, os, time as t
 import numpy as np
 import joblib
@@ -231,7 +230,3 @@ with mp_hands.Hands(max_num_hands=1,
 
 cap.release()
 cv2.destroyAllWindows()
-
-
-
-
