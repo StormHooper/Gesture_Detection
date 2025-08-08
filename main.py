@@ -230,5 +230,3 @@ with mp_hands.Hands(max_num_hands=1,
 
 cap.release()
 cv2.destroyAllWindows()
-
-
