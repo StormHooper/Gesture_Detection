@@ -58,6 +58,18 @@
 
 
     <body>
+        <h1><b>How to get Pycharm on Raspberry Pi</b></h1>
+        <ol>
+            <li>Go to <a href = "https://www.jetbrains.com/pycharm/download/?section=linux">this link</a> and click on “.tar.gz” and download the one with (LINUX ARM64). Download will take about 1 min</li>
+            <li>Check that the raspberry pi has a minimum of 10 GB. If not, delete all useless files. Do not delete the folders that exist by default. To clear the “Trash” folder, use <i>“rm -rf ~/.local/share/Trash/*”</i> in the terminal</li>
+            <li>Move the packed pycharm into where the folder will be unpacked</li>
+            <li>Open the terminal and “cd” into the folder that the packed pycharm is in</li>
+            <li>Run <i>“tar -xvzf pycharm-community-version-aarch64.tar.gz”</i> and wait approximately 5 min for it to unpack. Replace <i>“pycharm-community-version”</i> with the pycharm-community file name</li>
+            <li>Once unpacked, run <i>“cd pycharm-community-version/bin/”</i> to go into the bin folder</li>
+            <li>Run <i>“sh pycharm.sh”</i> to start pycharm</li>
+            <li>Deal with the Terms and Agreements</li>
+        </ol>
+
         <h1><b>Testing the Hand Detector</b></h1>
         <ol>
             <li>Run "<i>test.py</i>" to test that the model works</li>
