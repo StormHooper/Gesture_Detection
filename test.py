@@ -12,32 +12,30 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 
-# For webcam input (no CAP_DSHOW on macOS)
-cap = cv2.VideoCapture(0)  # <-- This is the only change
+# For webcam input (macOS compatible)
+cap = cv2.VideoCapture(0)
 
 frame_count = 0  # Frame counter for yaw reporting
+angle_delay = 15  # Report yaw angle every 30 frames
+angle_detection_active = False  # Toggle for 'a' key
 
 def calculate_yaw_angle(lm):
     # Use wrist (0), index_mcp (5), pinky_mcp (17)
-    wrist = lm[0]
     index_mcp = lm[5]
     pinky_mcp = lm[17]
 
-    # Calculate vector between index and pinky MCP joints
     dx = pinky_mcp.x - index_mcp.x
     dy = pinky_mcp.y - index_mcp.y
 
-    # Angle in radians then convert to degrees
     angle_rad = math.atan2(dy, dx)
-    angle_deg = math.degrees(angle_rad)
-    
-    return angle_deg
+    return math.degrees(angle_rad)
 
 with mp_hands.Hands(
     max_num_hands=1,
     min_detection_confidence=0.7,
     min_tracking_confidence=0.7) as hands:
 
+    print("Press 'a' to toggle angle detection.")
     print("Press 'q' to quit.")
     
     while cap.isOpened():
@@ -46,80 +44,59 @@ with mp_hands.Hands(
             print("Ignoring empty camera frame.")
             continue
 
-        # Flip and convert the image to RGB
         image = cv2.flip(image, 1)
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        # Process the frame and get hand landmarks
         results = hands.process(image_rgb)
 
-        gesture = "Unknown"
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
-                # Draw hand landmarks on the image
                 mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-
-                # Get landmark positions
                 lm = hand_landmarks.landmark
 
-                # Yaw angle reporting every 30 frames
-                frame_count += 1
-                if frame_count % 30 == 0:
-                    yaw_angle = calculate_yaw_angle(lm)
-                    print(f"Hand Z Angle: {yaw_angle:.2f}")
+                # --- Angle detection only if toggled ---
+                if angle_detection_active:
+                    frame_count += 1
+                    if frame_count % angle_delay == 0:
+                        yaw_angle = calculate_yaw_angle(lm)
+                        print(f"Hand Z Angle: {yaw_angle:.2f}")
 
-                # Finger tip landmarks (thumb is more complex)
-                tips = [8, 12, 16, 20]  # Index, middle, ring, pinky
-                fingers = []
-
-                for tip in tips:
-                    fingers.append(lm[tip].y < lm[tip - 2].y)
-
-                # Thumb (check x instead of y because it's sideways)
+                # --- Gesture detection (always runs) ---
+                tips = [8, 12, 16, 20]
+                fingers = [lm[tip].y < lm[tip - 2].y for tip in tips]
                 thumb_up = lm[4].x > lm[3].x if lm[17].x < lm[0].x else lm[4].x < lm[3].x
                 fingers.insert(0, thumb_up)
 
-                # Interpret fingers up and number of them
                 gesture = ""
                 number_of_fingers = 0
-                if fingers[0] == True:
+                if fingers[0]:
                     gesture = "Thumb"
                     number_of_fingers += 1
-                if fingers[1] == True:
-                    if gesture == "":
-                        gesture = "Pointer"
-                    else:
-                        gesture += ", Pointer"
+                if fingers[1]:
+                    gesture = f"{gesture+', ' if gesture else ''}Pointer"
                     number_of_fingers += 1
-                if fingers[2] == True:
-                    if gesture == "":
-                        gesture = "Middle"
-                    else:
-                        gesture += ", Middle"
+                if fingers[2]:
+                    gesture = f"{gesture+', ' if gesture else ''}Middle"
                     number_of_fingers += 1
-                if fingers[3] == True:
-                    if gesture == "":
-                        gesture == "Ring"
-                    else:
-                        gesture += ", Ring"
+                if fingers[3]:
+                    gesture = f"{gesture+', ' if gesture else ''}Ring"
                     number_of_fingers += 1
-                if fingers[4] == True:
-                    if gesture == "":
-                        gesture == "Pinky"
-                    else:
-                        gesture += ", Pinky"
+                if fingers[4]:
+                    gesture = f"{gesture+', ' if gesture else ''}Pinky"
                     number_of_fingers += 1
                 if gesture == "":
                     number_of_fingers = 0
-                
+
                 if gesture != previous_gesture:
-                    print(f"Gesture: {gesture} Number of Fingers: {str(number_of_fingers)}")
+                    print(f"Gesture: {gesture} Number of Fingers: {number_of_fingers}")
                     previous_gesture = gesture
 
-        # Show image
         cv2.imshow('Gesture Recognition', image)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('a'):
+            angle_detection_active = not angle_detection_active
+            print(f"[Angle Detection] {'Activated' if angle_detection_active else 'Deactivated'}")
+        elif key == ord('q'):
             break
 
 cap.release()
