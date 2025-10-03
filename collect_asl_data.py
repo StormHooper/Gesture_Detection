@@ -20,6 +20,22 @@ hands = mp_hands.Hands(
     min_tracking_confidence=0.7
 )
 
+def normalize_landmarks(landmarks):
+    """Normalize landmarks to be position and scale invariant"""
+    landmarks = np.array(landmarks).reshape(-1, 3)  # Shape: (21, 3)
+    
+    # Use wrist (landmark 0) as reference point
+    wrist = landmarks[0]
+    landmarks = landmarks - wrist  # Translate to origin
+    
+    # Scale normalization: use max distance from wrist
+    distances = np.linalg.norm(landmarks, axis=1)
+    max_dist = np.max(distances)
+    if max_dist > 0:
+        landmarks = landmarks / max_dist
+    
+    return landmarks.flatten().tolist()
+
 # Output structure
 data = []
 
@@ -82,7 +98,9 @@ while cap.isOpened():
         break
     elif key == ord(' '):  # Save sample
         if landmark_list:
-            sample = {"label": current_label, "landmarks": landmark_list}
+            # Normalize before saving
+            normalized = normalize_landmarks(landmark_list)
+            sample = {"label": current_label, "landmarks": normalized}
             data.append(sample)
             print(f"[Saved] '{current_label}' — Total: {len(data)}")
         else:

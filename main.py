@@ -17,6 +17,22 @@ if IS_WINDOWS:
 else:
     print("[Info] Non-Windows OS detected — audio/brightness control disabled.")
 
+def normalize_landmarks(landmarks):
+    """Normalize landmarks to be position and scale invariant"""
+    landmarks = np.array(landmarks).reshape(-1, 3)  # Shape: (21, 3)
+    
+    # Use wrist (landmark 0) as reference point
+    wrist = landmarks[0]
+    landmarks = landmarks - wrist  # Translate to origin
+    
+    # Scale normalization: use max distance from wrist
+    distances = np.linalg.norm(landmarks, axis=1)
+    max_dist = np.max(distances)
+    if max_dist > 0:
+        landmarks = landmarks / max_dist
+    
+    return landmarks.flatten().tolist()
+
 # Initialize camera
 cap = cv2.VideoCapture(0, cv2.CAP_DSHOW if IS_WINDOWS else 0)
 
@@ -155,8 +171,11 @@ with mp_hands.Hands(max_num_hands=1,
                 lm = lm_set.landmark
 
                 if asl_model and asl_active and (now - asl_start_time > 1.0):
+                    # Extract raw features
                     asl_features = [v for pt in lm_set.landmark for v in (pt.x, pt.y, pt.z)]
-                    prediction = asl_model.predict([asl_features])[0]
+                    # Normalize before prediction
+                    normalized_features = normalize_landmarks(asl_features)
+                    prediction = asl_model.predict([normalized_features])[0]
                     predicted_sign = label_encoder.inverse_transform([prediction])[0]
                     if predicted_sign != last_asl_letter:
                         print(f"[ASL] Detected: {predicted_sign}")
@@ -174,7 +193,7 @@ with mp_hands.Hands(max_num_hands=1,
                     active_read = True
                     last_event_time = now
                     print("Fist detected – command mode will start in "
-                          f"{cooldown_secs:.0f} s…")
+                          f"{cooldown_secs:.0f} s…")
                     break
 
                 if active_read and now - last_event_time < cooldown_secs:
@@ -182,7 +201,7 @@ with mp_hands.Hands(max_num_hands=1,
 
                 if active_read and not asl_active:
                     if fingers == [True]*5:
-                        gesture, active_read = "Open Palm", False
+                        gesture, active_read = "Open Palm", False
                         do_open_palm_action()
                         last_command_time = now
                     elif fingers == [False, True, False, False, False]:
@@ -202,11 +221,11 @@ with mp_hands.Hands(max_num_hands=1,
                         do_phone_action()
                         last_command_time = now
                     elif fingers == [True, False, False, False, False]:
-                        gesture, active_read = "Thumbs Up", False
+                        gesture, active_read = "Thumbs Up", False
                         do_thumbs_up_action()
                         last_command_time = now
                     elif fingers == [False, False, False, False, True]:
-                        gesture, active_read = "Other Bird", False
+                        gesture, active_read = "Other Bird", False
                         do_other_bird_action()
                         last_command_time = now
                     elif fingers == [True, True, True, False, False]:
@@ -224,7 +243,7 @@ with mp_hands.Hands(max_num_hands=1,
             print(f"Gesture: {gesture}")
             last_printed = gesture
 
-        cv2.imshow('Gesture Recognition', frame)
+        cv2.imshow('Gesture Recognition', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
